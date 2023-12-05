@@ -6,8 +6,12 @@ import StyledHero from "../Components/StyledHero/StyledHero";
 import "./SingleRoom.css"; 
 import { useUser } from "../Context/UserContext";
 import { useNavigate } from 'react-router-dom';
-
+import { ethers } from 'ethers';
+import contractABI from "../Data/contractABI"
 import axios from 'axios';
+import Web3 from 'web3';
+//import { SepoliaEthProvider } from '@sepolia/sepoliaeth-web3';
+import getContract from "../services/contract";
 const SingleRoom = () => {
   const { state, setState } = useUser();
   const { getRoom } = useContext(RoomContext);
@@ -32,7 +36,8 @@ const SingleRoom = () => {
     breakfast:false,
     featured:false,
     description:"",
-    images:[]
+    images:[],
+    timeLeft:0
   });
   
   useEffect(() => {
@@ -48,6 +53,17 @@ const SingleRoom = () => {
       [name]: value,
     }));
   };
+
+  const [contract,setContract]=useState()
+  // Function to toggle the button state
+  React.useEffect(() => {
+    setContract(getContract())
+}, [])
+  React.useEffect(() => {
+    if(contract){
+        //contract.on("statusChange")
+    }
+}, [contract])
 
   const handleRoomDataChange = (e) => {
     const { name, value } = e.target;
@@ -118,34 +134,32 @@ const SingleRoom = () => {
       [name]: checked,
     }));
   };
-  const handleReservationSubmit = async(e) => {
-    e.preventDefault();
-
-    try {
-      await window.ethereum.request({ method: 'eth_requestAccounts' });
-
-      const accounts = await window.ethereum.request({ method: 'eth_accounts' });
-      const account = accounts[0];
-
-      const message = `Rent room ${reservationData.roomId} for ${reservationData.duration} days with amount ${reservationData.amount}`;
-      const signature = await window.ethereum.request({ method: 'personal_sign', params: [message, account] });
-
-      const response = await axios.post('http://localhost:4000/rentRoom', {
-        roomId: reservationData.roomId,
-      duration: reservationData.duration,
-      amount: reservationData.amount,
-      senderAddress: account, // Include the sender's address
-      signature: signature,
-      });
-
-      console.log(response.data);
-
-      navigate('/rooms');
-    } catch (error) {
-      console.error('Error handling reservation:', error);
-    }
+ /* const alchemyApiKey = 'i6xEOVbkuTHDG5eQozLNLi9Nf0hTxgI1';
+  const alchemyEndpoint = `https://eth-mainnet.g.alchemy.com/v2/${alchemyApiKey}`;
+  
+  const alchemyProvider = new ethers.providers.JsonRpcProvider(alchemyEndpoint);*/
+  const handleReservationSubmit = () => {
+    console.log("room id: ",id)
+    console.log("price: ",price)
+    console.log("duration: ",reservationData.duration)
+    contract.rentRoom(id,reservationData.duration,{value:price*reservationData.duration})
+    contract.on("paid",(roomId,timeLeft)=>{
+      if(id==roomId){
+        contract.off("paid")
+        navigate('/rooms')
+      }
+    })
   };
-
+  const handleExtendSubmit = ()=> {
+    contract.extendRental(id,reservationData.duration,{value:price*reservationData.duration})
+    contract.on("paid",(roomId,timeLeft)=>{
+      if(id==roomId){
+        contract.off("paid")
+        navigate('/rooms')
+      }
+    })
+  }
+  
   if (!room) {
     return (
       <div className="error">
@@ -166,6 +180,7 @@ const SingleRoom = () => {
     breakfast,
     pets,
     images,
+    timeLeft
   } = roomData;
   console.log(images)
   const [mainImg, ...defaultImg] = images;
@@ -205,7 +220,7 @@ const SingleRoom = () => {
 
           <article className="info">
             <h3>information:</h3>
-            <h6>price : ${price}</h6>
+            <h6>price :{price} Wei</h6>
             <h6>size : {size} SQFT</h6>
             <h6>
               max capacity :{" "}
@@ -305,45 +320,39 @@ const SingleRoom = () => {
         </button>
       </form>
     </section> )}
-    {state.admin==2 &&
-    (
-      
-      <section className="reservation-form">
-        <h3>Reservation Form</h3>
-        <form onSubmit={handleReservationSubmit}>
-          
-          <div className="form-group">
-            <label htmlFor="duration">Number of Days to Reserve:</label>
-            <input
-              type="number"
-              id="duration"
-              name="duration"
-              value={reservationData.duration}
-              onChange={handleInputChange}
-              min="1"
-              required
-            />
-          </div>
-          <div className="form-group">
-            <label htmlFor="numberOfDays">Wei Amount:</label>
-            <input
-              type="number"
-              id="amount"
-              name="amount"
-              value={reservationData.amount}
-              onChange={handleInputChange}
-              min="1"
-              required
-            />
-          </div>
-          
-          <button type="submit" className="btn-primary">
-            Submit Reservation
-          </button>
-        </form>
-      </section>
-      )
-}
+    {state.admin === 2 && (
+  <>
+    <section className="reservation-form">
+      <h3>{timeLeft === 0 ? "Reservation Form" : "Extend Rental"}</h3>
+      <div className="form-group">
+        <label htmlFor="duration">
+          {timeLeft === 0
+            ? "Number of Days to Reserve:"
+            : "Extend Rental Duration:"}
+        </label>
+        <input
+          type="number"
+          id="duration"
+          name="duration"
+          value={reservationData.duration}
+          onChange={handleInputChange}
+          min="1"
+          required
+        />
+      </div>
+      <button
+        onClick={
+          timeLeft === 0 ? handleReservationSubmit : handleExtendSubmit
+        }
+        className="btn-primary"
+      >
+        {timeLeft === 0 ? "Submit Reservation" : "Submit Extension"}
+      </button>
+    </section>
+  </>
+)}
+
+
     </>
   );
 };
